@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI-Powered SQL Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-800 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="text-center py-10 animate-fadeIn flex justify-between items-center px-8">
+    <div class="flex-grow">
+      <h1 class="text-4xl font-bold text-white mb-2">AI-Powered SQL Generator</h1>
+      <p class="text-lg text-gray-300">Query your data with voice or text — no SQL required!</p>
+    </div>
+    <div id="authContainer" class="flex items-center gap-4">
+      <span id="userGreeting" class="text-white font-semibold"></span>
+      <button id="logoutBtn" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition">Logout</button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex-grow flex items-center justify-center">
+    <div class="bg-white/10 backdrop-blur-md rounded-xl shadow-lg p-8 w-full max-w-3xl animate-slideUp">
+      <!-- Upload -->
+      <div class="mb-6">
+        <label for="schemaUpload" class="block text-white font-semibold mb-2">Upload Schema (CSV or SQL):</label>
+        <input type="file" id="schemaUpload" accept=".csv,.sql,.schema"
+               class="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-500 transition">
+        <p id="schemaPathDisplay" class="text-sm text-gray-300 mt-2"></p>
+      </div>
+
+      <!-- Query -->
+      <div class="mb-6">
+        <label for="queryInput" class="block text-white font-semibold mb-2">Enter your query (or speak):</label>
+        <input type="text" id="queryInput" placeholder="e.g., Show average marks by subject"
+               class="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3 transition">
+        <div class="flex gap-3">
+          <button id="voiceBtn"
+                  class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition transform hover:scale-105">
+            🎤 Speak Query
+          </button>
+          <button id="submitBtn"
+                  class="flex-1 bg-pink-600 hover:bg-pink-700 text-white font-semibold py-2 px-4 rounded-lg transition transform hover:scale-105">
+            Generate SQL & Run
+          </button>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="results" class="bg-white rounded-lg p-4 shadow-inner min-h-[160px] animate-fadeIn">
+        <p class="text-gray-600">Results will appear here...</p>
+      </div>
+
+      <!-- Query History Section -->
+      <div class="mt-8 border-t border-gray-400 pt-6">
+        <h2 class="text-2xl font-bold text-white mb-4">Query History</h2>
+        <div id="historyContainer" class="bg-white rounded-lg p-4 max-h-96 overflow-y-auto">
+          <p class="text-gray-600 text-center">Loading history...</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center py-6 text-gray-400 text-sm">
+    Powered by Gemini + Python + SQLite • Environment-driven config
+  </footer>
+
+  <!-- Animations -->
+  <style>
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .animate-fadeIn { animation: fadeIn 1s ease-in-out; }
+    .animate-slideUp { animation: slideUp 1s ease-in-out; }
+  </style>
+
+  <!-- Script -->
+  <script>
+    const voiceBtn = document.getElementById('voiceBtn');
+    const queryInput = document.getElementById('queryInput');
+    const results = document.getElementById('results');
+    const schemaUpload = document.getElementById('schemaUpload');
+    const schemaPathDisplay = document.getElementById('schemaPathDisplay');
+
+    let currentSchemaPath = null;
+
+    // Voice recognition setup
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+
+      voiceBtn.addEventListener('click', () => {
+        recognition.start();
+        results.innerHTML = "<p class='text-indigo-600 font-semibold animate-pulse'>Listening...</p>";
+      });
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript.trim();
+        if (transcript.length > 0) {
+          queryInput.value = transcript;
+          results.innerHTML = `<p class="text-green-600 font-semibold">You said:</p><p>${transcript}</p>`;
+        } else {
+          results.innerHTML = "<p class='text-red-600 font-semibold'>Nothing was written/spoken.</p>";
+        }
+      };
+
+      recognition.onerror = () => {
+        results.innerHTML = "<p class='text-red-600 font-semibold'>Error capturing voice input.</p>";
+      };
+    } else {
+      voiceBtn.disabled = true;
+      voiceBtn.innerText = "Voice not supported";
+    }
+
+    // Upload + extract
+    schemaUpload.addEventListener('change', async () => {
+      const file = schemaUpload.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      results.innerHTML = "<p class='text-indigo-600 font-semibold animate-pulse'>Extracting schema...</p>";
+
+      try {
+        const response = await fetch("/api/extract-schema", { method: "POST", body: formData });
+        const payload = await response.json();
+
+        if (payload.error) {
+          results.innerHTML = `<p class='text-red-600 font-semibold'>${payload.error}</p>`;
+          currentSchemaPath = null;
+          schemaPathDisplay.textContent = "";
+          return;
+        }
+
+        currentSchemaPath = payload.filePath;
+        schemaPathDisplay.textContent = `Schema path: ${currentSchemaPath}`;
+
+        const data = payload.data;
+        let html = "<p class='text-gray-800 font-semibold'>Extracted Tables:</p>";
+        for (const [table, info] of Object.entries(data)) {
+          html += `<h3 class="text-indigo-600 font-bold mt-4">${table}</h3>`;
+
+          // CSV-like table rendering
+          if (info.columns && info.rows) {
+            html += `
+              <div class="overflow-x-auto mt-2">
+                <table class="min-w-full border border-gray-300 bg-white rounded-lg shadow">
+                  <thead class="bg-indigo-600 text-white">
+                    <tr>
+                      ${info.columns.map(col => `<th class="px-4 py-2 text-left">${col}</th>`).join("")}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${info.rows.map(row => `
+                      <tr class="border-t">
+                        ${info.columns.map(col => `<td class="px-4 py-2">${row[col] ?? ""}</td>`).join("")}
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+              <p class="text-sm text-gray-500 mt-1">Showing first ${info.rows.length} rows (Total: ${info.row_count})</p>
+            `;
+          } else {
+            // SQL-only metadata (insert counts)
+            if (info.columns && !info.rows) {
+              html += `<p class="text-gray-700 mt-1">Columns: ${info.columns.join(", ")}</p>`;
+            }
+            if (info.insert_count) {
+              html += `<p class="text-gray-700">Insert Count: ${info.insert_count}</p>`;
+            }
+            if (info.sample_inserts) {
+              html += `<pre class="bg-gray-100 p-2 rounded mt-1">${info.sample_inserts}</pre>`;
+            }
+          }
+        }
+        results.innerHTML = html;
+
+      } catch (err) {
+        results.innerHTML = "<p class='text-red-600 font-semibold'>Error uploading schema.</p>";
+        currentSchemaPath = null;
+        schemaPathDisplay.textContent = "";
+      }
+    });
+
+    // Generate SQL & run
+    document.getElementById('submitBtn').addEventListener('click', async () => {
+      const query = queryInput.value.trim();
+      if (!query) {
+        results.innerHTML = "<p class='text-red-600 font-semibold'>Nothing was written/spoken.</p>";
+        return;
+      }
+      if (!currentSchemaPath) {
+        results.innerHTML = "<p class='text-red-600 font-semibold'>Please upload a schema first.</p>";
+        return;
+      }
+
+      results.innerHTML = "<p class='text-indigo-600 font-semibold animate-pulse'>Generating SQL...</p>";
+
+      try {
+        const response = await fetch('/api/generate-sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, schemaPath: currentSchemaPath })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+          results.innerHTML = `<p class='text-red-600 font-semibold'>${data.error}</p>`;
+          return;
+        }
+
+        let html = `
+          <p class="text-gray-800 font-semibold">Generated SQL:</p>
+          <pre class="bg-gray-100 p-2 rounded">${data.sql}</pre>
+          <p class="text-gray-800 font-semibold mt-2">Result:</p>
+        `;
+
+        if (data.result && data.result.length > 0) {
+          const cols = Object.keys(data.result[0]);
+          html += `
+            <div class="overflow-x-auto">
+              <table class="min-w-full border border-gray-300 bg-white rounded-lg shadow">
+                <thead class="bg-indigo-600 text-white">
+                  <tr>
+                    ${cols.map(col => `<th class="px-4 py-2 text-left">${col}</th>`).join("")}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${data.result.map(row => `
+                    <tr class="border-t">
+                      ${cols.map(col => `<td class="px-4 py-2">${row[col] ?? ""}</td>`).join("")}
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `;
+        } else {
+          html += `<p class="text-gray-600">No inserted values found.</p>`;
+        }
+
+        results.innerHTML = html;
+
+      } catch (error) {
+        results.innerHTML = "<p class='text-red-600 font-semibold'>Error calling API.</p>";
+      }
+    });
+
+    // Load query history on page load
+    async function loadQueryHistory() {
+      try {
+        const response = await fetch('/api/history');
+        const data = await response.json();
+        const historyContainer = document.getElementById('historyContainer');
+
+        if (!data.history || data.history.length === 0) {
+          historyContainer.innerHTML = '<p class="text-gray-600 text-center">No query history yet</p>';
+          return;
+        }
+
+        let html = '<div class="space-y-3">';
+        data.history.forEach((item, idx) => {
+          html += `
+            <div class="border-l-4 border-indigo-500 bg-gray-50 p-3 rounded">
+              <p class="text-sm font-semibold text-gray-800">Query ${data.history.length - idx}: ${item.query}</p>
+              <p class="text-xs text-gray-600 mt-1">SQL: <code class="bg-gray-200 px-2 py-1 rounded">${item.sql}</code></p>
+              <p class="text-xs text-gray-500 mt-1">${new Date(item.created_at).toLocaleString()}</p>
+            </div>
+          `;
+        });
+        html += '</div>';
+
+        historyContainer.innerHTML = html;
+      } catch (error) {
+        document.getElementById('historyContainer').innerHTML = '<p class="text-red-600 text-center">Error loading history</p>';
+      }
+    }
+
+    // Check session and display username
+    async function checkSession() {
+      try {
+        const response = await fetch('/api/session-check');
+        const data = await response.json();
+        if (data.username) {
+          document.getElementById('userGreeting').textContent = `Welcome, ${data.username}!`;
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
+      }
+    }
+
+    // Load history when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      loadQueryHistory();
+      checkSession();
+    });
+
+    // Logout handler
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try {
+        const response = await fetch('/logout');
+        const data = await response.json();
+        if (data.ok && data.redirect) {
+          window.location.href = data.redirect;
+        }
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    });
+  </script>
+</body>
+</html>

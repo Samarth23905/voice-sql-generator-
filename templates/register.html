@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Register</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-white p-6 rounded-lg shadow">
+        <h1 class="text-2xl font-semibold mb-4">Create account</h1>
+        <form action="/register" id="registerForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Username</label>
+                <input type="text" id="username" required class="mt-1 block w-full border rounded px-3 py-2" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Password</label>
+                <input type="password" id="password" required class="mt-1 block w-full border rounded px-3 py-2" />
+            </div>
+            <div class="flex items-center justify-between">
+                <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded">Register</button>
+                <a href="/login" class="text-sm text-indigo-600 hover:underline">Sign in</a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch('/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const j = await res.json();
+            if (res.ok && j.ok) {
+                window.location.href = j.redirect || '/';
+            } else {
+                alert(j.error || 'Register failed');
+            }
+        });
+    </script>
+</body>
+
+</html>

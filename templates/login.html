@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login page</title>
+</head>
+
+<body>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div class="max-w-md w-full bg-white p-6 rounded-lg shadow">
+            <h1 class="text-2xl font-semibold mb-4">Login</h1>
+            <form action="/login" id="loginForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" name="username" id="username" required
+                        class="mt-1 block w-full border rounded px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" name="password" id="password" required
+                        class="mt-1 block w-full border rounded px-3 py-2" />
+                </div>
+                <div class="flex items-center justify-between">
+                    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded">Login</button>
+                    <a href="/register" class="text-sm text-indigo-600 hover:underline">Create account</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const j = await res.json();
+            if (res.ok && j.ok) {
+                window.location.href = j.redirect || '/home';
+            } else {
+                alert(j.error || 'Login failed');
+            }
+        });
+    </script>
+</body>
+
+</html>
